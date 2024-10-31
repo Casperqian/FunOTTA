@@ -270,15 +270,14 @@ class Ours(Algorithm):
                 self.labels = torch.cat([self.labels, yhat])
                 self.ent = torch.cat([self.ent, ent])
 
-        # supports, labels = self.prototype_select()
-        supports, labels = self.Kmeans_select()
+        supports, labels = self.select_supports()
 
         for _ in range(self.steps):
             p = self.forward_and_adapt(z, supports, labels)
 
         return p
 
-    def Kmeans_select(self):
+    def select_supports(self):
         filter_K = self.filter_K
         num_classes = self.num_classes
         y_hat = self.labels.argmax(dim=1).long()
