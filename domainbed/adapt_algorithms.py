@@ -37,6 +37,7 @@ ALGORITHMS = [
     'MEMO_BN',
     'UniDG',
     'DeYO',
+    'DeYOClf',
     'Ours',
 ]
 
