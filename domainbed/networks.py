@@ -230,81 +230,6 @@ class EfficientNet(torch.nn.Module):
                 m.eval()
 
 
-class ViT(torch.nn.Module):
-
-    def __init__(self, input_shape, hparams):
-        super(ViT, self).__init__()
-        if hparams['backbone'] == 'ViT-S_16':
-            self.network = timm.create_model(
-                'vit_small_patch16_224',
-                pretrained=False,
-                checkpoint_path=
-                '/home/zengqian/vit_small_patch16.augreg_in1k.bin')
-            self.n_outputs = 384
-
-        self.network.head = Identity()
-
-        self.hparams = hparams
-        self.dropout = nn.Dropout(hparams['dropout'])
-
-    def forward(self, x):
-        """Encode x into a feature vector of size n_outputs."""
-        return self.dropout(self.network(x))
-
-    def train(self, mode=True):
-        """
-        Override the default train() to freeze the BN parameters
-        """
-        super().train(mode)
-
-
-class Graph(torch.nn.Module):
-    """ResNet with the softmax chopped off and the batchnorm frozen"""
-
-    def __init__(self, input_shape, hparams):
-        super(Graph, self).__init__()
-        if hparams['backbone'] == 'SpGraph':
-            self.network = VisionTransformer(image_size=224,
-                                             patch_size=16,
-                                             in_channels=3,
-                                             num_classes=1000,
-                                             embed_dim=384,
-                                             num_heads=6,
-                                             depth=12,
-                                             emb_dropout=0.,
-                                             dropout=0.,
-                                             proj_drop=0.,
-                                             attn_drop=0.,
-                                             drop_path=0.)
-            self.n_outputs = 384
-            self.disable_bn = False
-
-        if hasattr(self.network, 'head'):
-            self.network.head = Identity()
-
-        if self.disable_bn:
-            self.freeze_bn()
-        self.hparams = hparams
-        self.dropout = nn.Dropout(hparams['dropout'])
-
-    def forward(self, x):
-        """Encode x into a feature vector of size n_outputs."""
-        return self.dropout(self.network(x))
-
-    def train(self, mode=True):
-        """
-        Override the default train() to freeze the BN parameters
-        """
-        super().train(mode)
-        if self.disable_bn:
-            self.freeze_bn()
-
-    def freeze_bn(self):
-        for m in self.network.modules():
-            if isinstance(m, nn.BatchNorm2d):
-                m.eval()
-
-
 def Featurizer(input_shape, hparams):
     """Auto-select an appropriate featurizer for the given input shape."""
     if len(input_shape) == 1:
@@ -315,22 +240,6 @@ def Featurizer(input_shape, hparams):
         return ResNet(input_shape, hparams)
     elif 'efficientnet' in hparams['backbone']:
         return EfficientNet(input_shape, hparams)
-    elif 'Graph' in hparams['backbone']:
-        return Graph(input_shape, hparams)
-    elif input_shape[1:3] == (224, 224) and 'ViT-' in hparams['backbone']:
-        return ViT(input_shape, hparams)
-    # elif input_shape[1:3] == (224, 224) and hparams['backbone'] in ['B_16', 'B_32', 'L_16', 'L_32']:
-    #     return vision_transformer.ViT(input_shape, hparams)
-    # elif input_shape[1:3] == (224, 224) and 'dino' in hparams['backbone']:
-    #     return vision_transformer.DINO(input_shape, hparams)
-    # elif input_shape[1:3] == (224, 224) and 'DeiT-' in hparams['backbone']:
-    #     return ViT(input_shape,hparams)
-    # elif input_shape[1:3] == (224, 224) and 'HViT' in hparams['backbone']:
-    #     return vision_transformer.HybridViT(input_shape, hparams)
-    # elif input_shape[1:3] == (224, 224) and 'Mixer' in hparams['backbone']:
-    #     return mlp_mixer.MLPMixer(input_shape, hparams)
-    # elif input_shape[1:3] == (224, 224) and 'BiT' in hparams['backbone']:
-    #     return big_transfer.BiT(input_shape, hparams)
     else:
         raise NotImplementedError
 
