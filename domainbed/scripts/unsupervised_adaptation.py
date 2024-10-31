@@ -295,18 +295,18 @@ if __name__ == "__main__":
     if algorithm_dict is not None:
         algorithm.load_state_dict(algorithm_dict)
 
-    # # Evaluate base model
-    # print("Base model's results")
-    # results = {}
-    # evals = zip(eval_loader_names, eval_loaders, eval_weights)
-    # for name, loader, weights in evals:
-    #     acc, auc, f1 = accuracy_auc_f1(algorithm, loader, device, adapt=None)
-    #     # results[name + '_acc'] = round(acc, 4)
-    #     results[name + '_auc'] = round(auc, 4)
-    #     results[name + '_f1'] = round(f1, 4)
-    # results_keys = sorted(results.keys())
-    # misc.print_row(results_keys, colwidth=12)
-    # misc.print_row([results[key] for key in results_keys], colwidth=12)
+    # Evaluate base model
+    print("Base model's results")
+    results = {}
+    evals = zip(eval_loader_names, eval_loaders, eval_weights)
+    for name, loader, weights in evals:
+        acc, auc, f1 = accuracy_auc_f1(algorithm, loader, device, adapt=None)
+        # results[name + '_acc'] = round(acc, 4)
+        results[name + '_auc'] = round(auc, 4)
+        results[name + '_f1'] = round(f1, 4)
+    results_keys = sorted(results.keys())
+    misc.print_row(results_keys, colwidth=12)
+    misc.print_row([results[key] for key in results_keys], colwidth=12)
 
     print("\nAfter {}".format(alg_name))
     # Cache the inference results
@@ -333,7 +333,7 @@ if __name__ == "__main__":
 
     if args.adapt_algorithm in ['T3A']:
         adapt_hparams_dict = {
-            'filter_K': [5, 20, 50, 100, -1],
+            'filter_K': [20, 50, 100, -1],
         }
     elif args.adapt_algorithm in [
             'TentFull', 'TentPreBN', 'TentClf', 'TentNorm'
@@ -359,8 +359,8 @@ if __name__ == "__main__":
         }
     elif args.adapt_algorithm in ['TAST']:
         adapt_hparams_dict = {
-            'num_ensemble': [5],
             'filter_K': [20, 50, 100, -1],
+            'num_ensemble': [5],
             'gamma': [1, 3],
             'lr': [1e-3],
             'tau': [10],
@@ -374,17 +374,17 @@ if __name__ == "__main__":
             'gamma': [1, 3],
             'lr': [1e-3],
             'tau': [10],
-            'k': [1, 2, 4, 8],
-            'lambda1': [0, 1],  # For ablation study
-            'lambda2': [0, 1],  # For ablation study
+            'k': [2, 4, 8],
+            'lambda1': [1],  # For ablation study
+            'lambda2': [1],  # For ablation study
             'init_mode': ['kaiming_normal']
         }
     elif args.adapt_algorithm in ['UniDG']:
         adapt_hparams_dict = {
+            'filter_K': [20, 50, 100, -1],
             'lr': [1e-3, 1e-4],
             'gamma': [1, 3],
             'lamb': [1.0, 0.1],
-            'filter_K': [50, 100, -1],
         }
     elif args.adapt_algorithm in ['DeYO', 'DeYOClf']:
         adapt_hparams_dict = {
