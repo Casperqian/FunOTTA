@@ -21,7 +21,6 @@ import torchvision
 import torch.utils.data
 
 from sklearn.metrics import accuracy_score, roc_auc_score, f1_score, confusion_matrix
-from scipy.optimize import linear_sum_assignment
 
 from domainbed import datasets
 from domainbed import hparams_registry
