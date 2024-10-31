@@ -375,19 +375,10 @@ class Ours(Algorithm):
         consistency_loss = F.kl_div(classifier_logits.log_softmax(-1),
                                     pre_logits.softmax(-1),
                                     reduction='batchmean')
-
-        # ent_loss = softmax_entropy(classifier_logits).mean(0)
-
+        
         loss = 0.2 * self._lambda1 * contrastive_loss + conventional_loss + classifier_loss + self._lambda2 * consistency_loss
-
-        # print(
-        #     f'{contrastive_loss.item()=} {conventional_loss.item()=} {classifier_loss.item()=} {consistency_loss.item()=}'
-        # )
-
         loss.backward()
-
         self.optimizer.step()
-
         # self.update_ema(self.classifier, self.pre_classifier)
 
         return outputs
