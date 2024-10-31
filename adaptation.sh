@@ -1,7 +1,7 @@
-export CUDA_VISIBLE_DEVICES=2
+export CUDA_VISIBLE_DEVICES=0
 
 INPUT_DIR="./checkpoint/MultipleEnvironmentDR/resnet18-BN/trial_seed-0/"
-ADAPT_ALGORITHMS=("Ours")
+ADAPT_ALGORITHMS=("TentClf" "PLClf" "SHOT" "T3A" "TAST" "UniDG" "DeYOClf" "Ours")
 
 for algorithm in "${ADAPT_ALGORITHMS[@]}"; do
     echo "Running $algorithm..."
