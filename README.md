@@ -1,1 +1,1 @@
-# TTA-for-fundus-images
+# Test time adaptation for fundus image classification
