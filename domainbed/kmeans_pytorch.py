@@ -5,24 +5,22 @@ from tqdm import tqdm
 
 def initialize(x, num_clusters):
     c0_idx = int(np.random.uniform(0, len(x)))
-    centroid = x[c0_idx].reshape(1, -1)  # 选择第一个簇中心
+    centroid = x[c0_idx].reshape(1, -1)
     k = 1
     n = x.shape[0]
     while k < num_clusters:
         d2 = []
         for i in range(n):
             subs = centroid - x[i, :]
-            dimension2 = np.power(subs, 2)
-            dimension_s = np.sum(dimension2, axis=1)  # sum of each row
-            d2.append(np.min(dimension_s))
+            dimension2 = torch.pow(subs, 2)
+            dimension_s = torch.sum(dimension2, dim=1)
+            d2.append(torch.min(dimension_s).item())
 
-        # ---- 直接选择概率值最大的 ------
-        # new_c_idx = np.argmax(d2)
-        # ---- 依照概率分布进行选择 -----
-        prob = np.array(d2) / np.sum(np.array(d2))
-        new_c_idx = np.random.choice(n, p=prob)
+        new_c_idx = np.argmax(d2)
+        # prob = np.array(d2) / np.sum(np.array(d2))
+        # new_c_idx = np.random.choice(n, p=prob)
 
-        centroid = np.vstack([centroid, x[new_c_idx]])
+        centroid = torch.vstack([centroid, x[new_c_idx]])
         k += 1
     return centroid
 
