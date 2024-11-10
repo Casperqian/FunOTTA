@@ -31,8 +31,8 @@ def _hparams(algorithm, dataset, random_seed):
     _hparam('class_balanced', False, lambda r: False)
     _hparam('nonlinear_classifier', False, lambda r: False)
 
-    _hparam('lr', 5e-4, lambda r: 10**r.uniform(-5, -2))
-    _hparam('weight_decay', 1e-4, lambda r: 10**r.uniform(-6, -2))
+    _hparam('lr', 1e-4, lambda r: 10**r.uniform(-4, -2))
+    _hparam('weight_decay', 1e-4, lambda r: 10**r.uniform(-4, -2))
     _hparam('batch_size', 64, lambda r: int(2**r.uniform(3, 6)))
 
     return hparams
