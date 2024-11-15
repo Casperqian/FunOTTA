@@ -51,7 +51,6 @@ def generate_featurelized_loader(loader, network, classifier, batch_size=32):
     We speeded up the experiments by converting the observations into representations. 
     """
     z_list = []
-    z_pair_list = []
     y_list = []
     p_list = []
     network.eval()
@@ -68,7 +67,6 @@ def generate_featurelized_loader(loader, network, classifier, batch_size=32):
     network.train()
     classifier.train()
     z = torch.cat(z_list)
-    z_pair = torch.cat(z_pair_list) if len(z_pair_list) > 0 else None
     y = torch.cat(y_list)
     p = torch.cat(p_list)
     ent = softmax_entropy(p)
