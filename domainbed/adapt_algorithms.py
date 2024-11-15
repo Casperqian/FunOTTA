@@ -15,11 +15,11 @@ import torch.autograd as autograd
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
-from sklearn.cluster import KMeans
+# from sklearn.cluster import KMeans
 from torchvision import transforms
 
 from domainbed.algorithms import Algorithm
-from domainbed.kmeans_pytorch import kmeans
+from domainbed.dynamic_cluster import kmeans
 from domainbed.lib.Aug import aug
 
 ALGORITHMS = [
@@ -289,8 +289,6 @@ class Ours(Algorithm):
                                                      distance='euclidean',
                                                      device=device)
             dist = torch.cdist(self.supports, cluster_centers, p=2)
-            # dist = self.euclidean_distance_einsum(self.supports,
-            #                                       cluster_centers)
             indices = []
             indices1 = torch.LongTensor(list(range(len(dist)))).to(device)
             for i in range(num_classes):
