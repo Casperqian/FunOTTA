@@ -386,7 +386,7 @@ if __name__ == "__main__":
         adapt_hparams_dict = {
             'lr': [1e-3, 2.5e-4, 1e-4],
             'gamma': [1, 3],
-            'ent_thrshold': [0.5],
+            'ent_thrshold': [0.5, 1.0, 1.5],
             'ent_margin': [0.4],
             'plpd_threshold': [0.2, 0.3],
             'aug_type': ["occ", "patch", "pixel"]
