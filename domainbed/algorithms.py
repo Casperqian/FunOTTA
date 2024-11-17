@@ -77,11 +77,6 @@ class ERM(Algorithm):
 
         self.criterion = nn.CrossEntropyLoss()
 
-        # self.fp, self.yp, self.lp = None, None, None
-        # self.register_buffer('fp', None)
-        # self.register_buffer('yp', None)
-        # self.register_buffer('lp', None)
-
     def update(self, minibatches, unlabeled=None):
         all_x = torch.cat([x for x, y in minibatches])
         all_y = torch.cat([y for x, y in minibatches])
