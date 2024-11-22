@@ -206,7 +206,6 @@ class MultipleEnvironmentDR(MultipleDomainDataset):
         'IDRID_resized',
         'DDR_resized',
         'DeepDRiD_resized',
-        # 'FGADR_resized',
     ]
 
     def __init__(self,
@@ -299,8 +298,7 @@ class Glaucoma(MultipleDomainDataset):
     CHECKPOINT_FREQ = 100
     N_WORKERS = 16
     ENVIRONMENTS = [
-        'SOURCE', 'ORIGA', 'BEH', 'FIVES', 'G1020', 'sjchoi86-HRF', 'REFUGE1',
-        'PAPILA'
+        'SOURCE', 'ORIGA', 'BEH', 'FIVES', 'sjchoi86-HRF', 'REFUGE1', 'PAPILA'
     ]
 
     def __init__(self,
@@ -381,55 +379,3 @@ class Glaucoma(MultipleDomainDataset):
                                   transform=denormalize_transform))
 
             print(f'{len(imgs)} images from {dataset_name} dataset.')
-
-
-class MultipleEnvironmentImageFolder(MultipleDomainDataset):
-
-    def __init__(self, root, envs, return_positive):
-        super().__init__()
-        environments = [f.name for f in os.scandir(root) if f.is_dir()]
-        environments = sorted(environments)
-
-        pos_transform = transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                 std=[0.229, 0.224, 0.225])
-        ])
-        transform = transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                 std=[0.229, 0.224, 0.225])
-        ])
-        augment_transform = transforms.Compose([
-            # transforms.Resize((224,224)),
-            transforms.RandomResizedCrop(224, scale=(0.7, 1.0)),
-            transforms.RandomHorizontalFlip(),
-            transforms.ColorJitter(0.3, 0.3, 0.3, 0.3),
-            transforms.RandomGrayscale(),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                 std=[0.229, 0.224, 0.225]),
-        ])
-
-        self.datasets = []
-        for i, environment in enumerate(environments):
-
-            if i in envs:  # train envs
-                env_transform = augment_transform
-            else:
-                env_transform = transform
-
-            path = os.path.join(root, environment)
-            env_dataset = MyImageFolder(path, transform, return_positive,
-                                        pos_transform)
-
-            self.datasets.append(env_dataset)
-
-        self.input_shape = (
-            3,
-            224,
-            224,
-        )
-        self.num_classes = len(self.datasets[-1].classes)
