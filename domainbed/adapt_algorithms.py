@@ -252,10 +252,8 @@ class Ours(Algorithm):
                 # prediction
                 self.supports = self.supports.to(z.device)
                 self.labels = self.labels.to(z.device)
-                self.ent = self.ent.to(z.device)
                 self.supports = torch.cat([self.supports, z])
                 self.labels = torch.cat([self.labels, yhat])
-                self.ent = torch.cat([self.ent, ent])
 
         supports, labels = self.select_supports()
 
@@ -291,7 +289,6 @@ class Ours(Algorithm):
 
         self.supports = self.supports[indices]
         self.labels = self.labels[indices]
-        self.ent = self.ent[indices]
 
         return self.supports, self.labels
 
@@ -310,54 +307,35 @@ class Ours(Algorithm):
         coeff = 1 / (torch.exp(ent_s))
         coeff = (coeff / coeff.sum()) * len(ent_s)
         prototype_logits = self.compute_logits(z, supports, labels, self.mlps)  
-
+        yhat = torch.argmax(prototype_logits, dim=-1) 
+        
         embedding = self.mlps(z).view(self.num_ensemble, z.size(0), -1)  
         prototype = labels.T @ supports
         prototype_embedding = self.mlps(prototype).view(self.num_ensemble, self.num_classes, -1) 
-
-        # yhat = torch.argmax(classifier_logits, dim=-1) 
-        yhat = torch.argmax(prototype_logits, dim=-1)  
-
         embedding = F.normalize(embedding, dim=-1)
         prototype_embedding = F.normalize(prototype_embedding, dim=-1)
 
         contrastive_loss, conventional_loss = None, None
-        for ens in range(self.num_ensemble):
-            distances = F.pairwise_distance(
-                embedding[ens].unsqueeze(1),
-                prototype_embedding[ens].unsqueeze(0),
-                p=2)  # [B, C]
-            mask = torch.arange(
-                self.num_classes,
-                device=embedding.device).unsqueeze(0) == yhat[ens].unsqueeze(1)
+        for ens in range(self.num_ensemble): 
+            distances = F.pairwise_distance(embedding[ens].unsqueeze(1), prototype_embedding[ens].unsqueeze(0), p=2)  # [B, C]
+            mask = torch.arange(self.num_classes, device=embedding.device).unsqueeze(0) == yhat[ens].unsqueeze(1)
             pos_distances = distances[mask].view(z.size(0), -1)  # [B, 1]
             neg_distances = distances[~mask].view(z.size(0), -1)
+            contrastive_loss = (contrastive_loss or 0) + 
+            (F.cross_entropy(torch.cat([pos_distances, neg_distances], dim=1).float(), 
+                             torch.zeros(z.size(0), device=z.device).long(), reduction='none') * coeff).mean(0) / self.num_ensemble
+            conventional_loss = (conventional_loss or 0) + 
+            F.cross_entropy(prototype_logits[ens], targets[ens]) / self.num_ensemble
+        
+        # Compute the consistency loss, also update the classifier
+        classifier_loss = F.kl_div(classifier_logits.log_softmax(-1), prototype_logits.softmax(-1), reduction='batchmean')
+        consistency_loss = F.kl_div(classifier_logits.log_softmax(-1), pre_logits.softmax(-1), reduction='batchmean')
 
-            contrastive_loss = (contrastive_loss or 0) + (F.cross_entropy(
-                torch.cat([pos_distances, neg_distances], dim=1).float(),
-                torch.zeros(z.size(0), device=z.device).long(),
-                reduction='none') * coeff).mean(0) / self.num_ensemble
-
-            conventional_loss = (conventional_loss or 0) + F.cross_entropy(
-                prototype_logits[ens], targets[ens]) / self.num_ensemble
-
-        # Compute the consistency loss, also unpdate the classifier
-        classifier_loss = F.kl_div(classifier_logits.log_softmax(-1),
-                                   prototype_logits.softmax(-1),
-                                   reduction='batchmean')
-        consistency_loss = F.kl_div(classifier_logits.log_softmax(-1),
-                                    pre_logits.softmax(-1),
-                                    reduction='batchmean')
-
-        loss = 0.2 * self._lambda1 * contrastive_loss + conventional_loss + self._lambda2 * (
-            classifier_loss + consistency_loss)
-
+        loss = 0.2 * self._lambda1 * contrastive_loss + conventional_loss + self._lambda2 * (classifier_loss + consistency_loss)
         loss.backward()
-
         self.optimizer.step()
-
         # self.update_ema(self.classifier, self.pre_classifier)
-
+ 
         return outputs
 
     def target_generation(self, z, supports, labels):
@@ -371,25 +349,20 @@ class Ours(Algorithm):
         values, indices = torch.topk(W, k, sorted=False)  # [B, k]
         topk_indices = torch.zeros_like(W).scatter_(
             1, indices, 1)  # [B, N] 1 for topk, 0 for else
-        temp_labels = self.compute_logits(supports, supports, labels,
-                                          self.mlps)  # [ens, N, C]
+        temp_labels = self.compute_logits(supports, supports, labels, self.mlps)  # [ens, N, C]
         temp_labels_targets = F.one_hot(
             temp_labels.argmax(-1),
             num_classes=self.num_classes).float()  # [ens, N, C]
         temp_labels_outputs = torch.softmax(temp_labels, -1)  # [ens, N, C]
-        topk_indices = topk_indices.unsqueeze(0).repeat(
-            self.num_ensemble, 1, 1)  # [ens, B, N]
+        topk_indices = topk_indices.unsqueeze(0).repeat(self.num_ensemble, 1, 1)  # [ens, B, N]
 
         # targets for pseudo labels. we use one-hot class distribution
         targets = torch.bmm(topk_indices, temp_labels_targets)  # [ens, B, C]
-        targets = targets / (targets.sum(2, keepdim=True) + 1e-12
-                             )  # [ens, B, C]
-        # targets = targets.mean(0)  # [B,C]
+        targets = targets / (targets.sum(2, keepdim=True) + 1e-12)  # [ens, B, C]
 
         # outputs for prediction
         outputs = torch.bmm(topk_indices, temp_labels_outputs)  # [ens, B, C]
-        outputs = outputs / (outputs.sum(2, keepdim=True) + 1e-12
-                             )  # [ens, B, C]
+        outputs = outputs / (outputs.sum(2, keepdim=True) + 1e-12)  # [ens, B, C]
         outputs = outputs.mean(0)  # [B,C]
 
         return targets, outputs
@@ -550,6 +523,301 @@ class T3A(Algorithm):
         self.labels = self.warmup_labels.data
         self.ent = self.warmup_ent.data
         
+
+class TAST(Algorithm):
+
+    def __init__(self, input_shape, num_classes, num_domains, hparams,
+                 algorithm):
+        super().__init__(input_shape, num_classes, num_domains, hparams)
+        # trained feature extractor and last linear classifier
+        self.featurizer = algorithm.featurizer
+        self.classifier = algorithm.classifier
+
+        # store supports and corresponding labels
+        warmup_supports = self.classifier.weight.data
+        self.warmup_supports = warmup_supports
+        warmup_prob = self.classifier(self.warmup_supports)
+        self.warmup_labels = F.one_hot(warmup_prob.argmax(1),
+                                       num_classes=num_classes)
+        self.warmup_ent = softmax_entropy(warmup_prob)
+        self.ent = self.warmup_ent.data
+        self.supports = self.warmup_supports.data
+        self.labels = self.warmup_labels.data
+
+        # hparams
+        self.filter_K = hparams['filter_K']
+        self.steps = hparams['gamma']
+        self.num_ensemble = hparams['num_ensemble']
+        self.lr = hparams['lr']
+        self.tau = hparams['tau']
+        self.init_mode = hparams['init_mode']
+        self.num_classes = num_classes
+        self.k = hparams['k']
+
+        # multiple projection heads and its optimizer
+        self.mlps = BatchEnsemble(self.featurizer.n_outputs,
+                                  self.featurizer.n_outputs // 4,
+                                  self.num_ensemble, self.init_mode).cuda()
+        self.optimizer = torch.optim.Adam(self.mlps.parameters(),
+                                          lr=self.lr,
+                                          eps=1e-8)
+
+    def forward(self, x, adapt=False):
+        if not self.hparams['cached_loader']:
+            z = self.featurizer(x)
+        else:
+            z = x
+
+        if adapt:
+            p_supports = self.classifier(z)
+            yhat = torch.nn.functional.one_hot(
+                p_supports.argmax(1), num_classes=self.num_classes).float()
+            ent = softmax_entropy(p_supports)
+
+            # prediction
+            self.supports = self.supports.to(z.device)
+            self.labels = self.labels.to(z.device)
+            self.ent = self.ent.to(z.device)
+            self.supports = torch.cat([self.supports, z])
+            self.labels = torch.cat([self.labels, yhat])
+            self.ent = torch.cat([self.ent, ent])
+
+        supports, labels = self.select_supports()
+
+        for _ in range(self.steps):
+            p = self.forward_and_adapt(z, supports, labels)
+        return p
+
+    def compute_logits(self, z, supports, labels, mlp):
+        '''
+        :param z: unlabeled test examples
+        :param supports: support examples
+        :param labels: labels of support examples
+        :param mlp: multiple projection heads
+        :return: classification logits of z
+        '''
+        B, dim = z.size()
+        N, dim_ = supports.size()
+
+        mlp_z = mlp(z)  # (B*ensemble_size,dim//4)
+        mlp_supports = mlp(supports)  # (N*ensemble_size,dim_//4)
+        assert (dim == dim_)
+
+        logits = torch.zeros(self.num_ensemble, B,
+                             self.num_classes).to(z.device)
+        for ens in range(self.num_ensemble):
+
+            temp_centroids = (labels /
+                              (labels.sum(dim=0, keepdim=True) +
+                               1e-12)).T @ mlp_supports[ens * N:(ens + 1) * N]
+
+            # normalize
+            temp_z = torch.nn.functional.normalize(mlp_z[ens * B:(ens + 1) *
+                                                         B],
+                                                   dim=1)
+            temp_centroids = torch.nn.functional.normalize(temp_centroids,
+                                                           dim=1)
+            logits[ens] = self.tau * temp_z @ temp_centroids.T  # [B,C]
+
+        return logits
+
+    def select_supports(self):
+        '''
+        we filter support examples with high prediction entropy
+        :return: filtered support examples.
+        '''
+        ent_s = self.ent
+        y_hat = self.labels.argmax(dim=1).long()
+        filter_K = self.filter_K
+        device = ent_s.device
+        if filter_K == -1:
+            indices = torch.LongTensor(list(range(len(ent_s)))).to(device)
+        else:
+            indices = []
+            indices1 = torch.LongTensor(list(range(len(ent_s)))).to(device)
+            for i in range(self.num_classes):
+                _, indices2 = torch.sort(ent_s[y_hat == i])
+                indices.append(indices1[y_hat == i][indices2][:filter_K])
+            indices = torch.cat(indices)
+
+        self.supports = self.supports[indices]
+        self.labels = self.labels[indices]
+        self.ent = self.ent[indices]
+
+        return self.supports, self.labels
+
+    @torch.enable_grad()
+    def forward_and_adapt(self, z, supports, labels):
+        # targets : pseudo labels, outputs: for prediction
+
+        with torch.no_grad():
+            targets, outputs = self.target_generation(z, supports, labels)
+
+        self.optimizer.zero_grad()
+
+        loss = None
+        logits = self.compute_logits(z, supports, labels, self.mlps)
+
+        for ens in range(self.num_ensemble):
+            if loss is None:
+                loss = F.kl_div(logits[ens].log_softmax(-1),
+                                targets[ens],
+                                reduction='batchmean')
+            else:
+                loss += F.kl_div(logits[ens].log_softmax(-1),
+                                 targets[ens],
+                                 reduction='batchmean')
+
+        loss.backward()
+        self.optimizer.step()
+
+        return outputs  # outputs
+
+    def reset(self):
+        self.supports = self.warmup_supports.data
+        self.labels = self.warmup_labels.data
+        self.ent = self.warmup_ent.data
+
+        self.mlps.reset()
+        self.optimizer = torch.optim.Adam(self.mlps.parameters(), lr=self.lr)
+
+        torch.cuda.empty_cache()
+
+    # from https://jejjohnson.github.io/research_journal/snippets/numpy/euclidean/
+    def euclidean_distance_einsum(self, X, Y):
+        # X, Y [n, dim], [m, dim] use_featurer_cache > [n,m]
+        XX = torch.einsum('nd, nd->n', X, X)[:, None]  # [n, 1]
+        YY = torch.einsum('md, md->m', Y, Y)  # [m]
+        XY = 2 * torch.matmul(X, Y.T)  # [n,m]
+        return XX + YY - XY
+
+    def cosine_distance_einsum(self, X, Y):
+        # X, Y [n, dim], [m, dim] -> [n,m]
+        X = F.normalize(X, dim=1)
+        Y = F.normalize(Y, dim=1)
+        XX = torch.einsum('nd, nd->n', X, X)[:, None]  # [n, 1]
+        YY = torch.einsum('md, md->m', Y, Y)  # [m]
+        XY = 2 * torch.matmul(X, Y.T)  # [n,m]
+        return XX + YY - XY
+
+    def target_generation(self, z, supports, labels):
+
+        # retrieve k nearest neighbors. from "https://github.com/csyanbin/TPN/blob/master/train.py"
+        dist = self.cosine_distance_einsum(z, supports)
+        W = torch.exp(-dist)  # [B, N]
+
+        temp_k = self.filter_K if self.filter_K != -1 else supports.size(
+            0) // self.num_classes
+        k = min(self.k, temp_k)
+
+        values, indices = torch.topk(W, k, sorted=False)  # [B, k]
+        topk_indices = torch.zeros_like(W).scatter_(
+            1, indices, 1)  # [B, N] 1 for topk, 0 for else
+        temp_labels = self.compute_logits(supports, supports, labels,
+                                          self.mlps)  # [ens, N, C]
+        temp_labels_targets = F.one_hot(
+            temp_labels.argmax(-1),
+            num_classes=self.num_classes).float()  # [ens, N, C]
+        temp_labels_outputs = torch.softmax(temp_labels, -1)  # [ens, N, C]
+        topk_indices = topk_indices.unsqueeze(0).repeat(
+            self.num_ensemble, 1, 1)  # [ens, B, N]
+
+        # targets for pseudo labels. we use one-hot class distribution
+        targets = torch.bmm(topk_indices, temp_labels_targets)  # [ens, B, C]
+        targets = targets / (targets.sum(2, keepdim=True) + 1e-12
+                             )  # [ens, B, C]
+        # targets = targets.mean(0)  # [B,C]
+
+        # outputs for prediction
+
+        outputs = torch.bmm(topk_indices, temp_labels_outputs)  # [ens, B, C]
+        outputs = outputs / (outputs.sum(2, keepdim=True) + 1e-12
+                             )  # [ens, B, C]
+        outputs = outputs.mean(0)  # [B,C]
+
+        return targets, outputs
+
+
+class T3A(Algorithm):
+    """
+    Test Time Template Adjustments (T3A)
+    """
+
+    def __init__(self, input_shape, num_classes, num_domains, hparams,
+                 algorithm):
+        super().__init__(input_shape, num_classes, num_domains, hparams)
+        self.featurizer = algorithm.featurizer
+        self.classifier = algorithm.classifier
+
+        warmup_supports = self.classifier.weight.data
+        self.warmup_supports = warmup_supports
+        warmup_prob = self.classifier(self.warmup_supports)
+        self.warmup_ent = softmax_entropy(warmup_prob)
+        self.warmup_labels = torch.nn.functional.one_hot(
+            warmup_prob.argmax(1), num_classes=num_classes).float()
+
+        self.supports = self.warmup_supports.data
+        self.labels = self.warmup_labels.data
+        self.ent = self.warmup_ent.data
+
+        self.filter_K = hparams['filter_K']
+        self.num_classes = num_classes
+        self.softmax = torch.nn.Softmax(-1)
+
+    def forward(self, x, adapt=False):
+        if not self.hparams['cached_loader']:
+            z = self.featurizer(x)
+        else:
+            z = x
+        if adapt:
+            # online adaptation
+            p = self.classifier(z)
+            yhat = torch.nn.functional.one_hot(
+                p.argmax(1), num_classes=self.num_classes).float()
+            ent = softmax_entropy(p)
+
+            # prediction
+            self.supports = self.supports.to(z.device)
+            self.labels = self.labels.to(z.device)
+            self.ent = self.ent.to(z.device)
+            self.supports = torch.cat([self.supports, z])
+            self.labels = torch.cat([self.labels, yhat])
+            self.ent = torch.cat([self.ent, ent])
+
+        supports, labels = self.select_supports()
+        supports = torch.nn.functional.normalize(supports, dim=1)
+        weights = (supports.T @ (labels))
+        return z @ torch.nn.functional.normalize(weights, dim=0)
+
+    def select_supports(self):
+        ent_s = self.ent
+        y_hat = self.labels.argmax(dim=1).long()
+        filter_K = self.filter_K
+        if filter_K == -1:
+            indices = torch.LongTensor(list(range(len(ent_s)))).to(
+                y_hat.device)
+
+        indices = []
+        indices1 = torch.LongTensor(list(range(len(ent_s)))).to(y_hat.device)
+        for i in range(self.num_classes):
+            _, indices2 = torch.sort(ent_s[y_hat == i])
+            indices.append(indices1[y_hat == i][indices2][:filter_K])
+        indices = torch.cat(indices)
+
+        self.supports = self.supports[indices]
+        self.labels = self.labels[indices]
+        self.ent = self.ent[indices]
+
+        return self.supports, self.labels
+
+    def predict(self, x, adapt=False):
+        return self(x, adapt)
+
+    def reset(self):
+        self.supports = self.warmup_supports.data
+        self.labels = self.warmup_labels.data
+        self.ent = self.warmup_ent.data
+
 
 class TentFull(Algorithm):
 
