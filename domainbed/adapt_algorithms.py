@@ -44,10 +44,6 @@ def get_algorithm_class(algorithm_name):
     return globals()[algorithm_name]
 
 
-te_transforms = transforms.Compose([
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-])
-
 @torch.jit.script
 def softmax_entropy(x: torch.Tensor) -> torch.Tensor:
     """Entropy of softmax distribution from logits."""
