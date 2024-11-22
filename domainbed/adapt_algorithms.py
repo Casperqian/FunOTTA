@@ -311,22 +311,23 @@ class Ours(Algorithm):
         self.optimizer.zero_grad()
 
         pre_logits = self.pre_classifier(z)
-        classifier_logits = self.classifier(z)  # [B, num_classes]
-        prototype_logits = self.compute_logits(z, supports, labels,
-                                               self.mlps)  # [ens, B, dim//4]
-        embedding = self.mlps(z).view(self.num_ensemble, z.size(0),
-                                      -1)  # [ens, B, dim//4]
-        prototype = labels.T @ supports
-        prototype_embedding = self.mlps(prototype).view(
-            self.num_ensemble, self.num_classes, -1)  # [ens, C, dim//4]
+        classifier_logits = self.classifier(z)  
+        ent_s = softmax_entropy(classifier_logits)
+        coeff = 1 / (torch.exp(ent_s))
+        coeff = (coeff / coeff.sum()) * len(ent_s)
+        prototype_logits = self.compute_logits(z, supports, labels, self.mlps)  
 
-        yhat = torch.argmax(prototype_logits, dim=-1)  # [ens, B]
+        embedding = self.mlps(z).view(self.num_ensemble, z.size(0), -1)  
+        prototype = labels.T @ supports
+        prototype_embedding = self.mlps(prototype).view(self.num_ensemble, self.num_classes, -1) 
+
+        # yhat = torch.argmax(classifier_logits, dim=-1) 
+        yhat = torch.argmax(prototype_logits, dim=-1)  
 
         embedding = F.normalize(embedding, dim=-1)
         prototype_embedding = F.normalize(prototype_embedding, dim=-1)
 
-        contrastive_loss = None
-        conventional_loss = None
+        contrastive_loss, conventional_loss = None, None
         for ens in range(self.num_ensemble):
             distances = F.pairwise_distance(
                 embedding[ens].unsqueeze(1),
@@ -338,24 +339,13 @@ class Ours(Algorithm):
             pos_distances = distances[mask].view(z.size(0), -1)  # [B, 1]
             neg_distances = distances[~mask].view(z.size(0), -1)
 
-            # Compute the contrastive loss
-            if contrastive_loss is None:
-                contrastive_loss = F.cross_entropy(
-                    torch.cat([pos_distances, neg_distances], dim=1).float(),
-                    torch.zeros(z.size(0),
-                                device=z.device).long()) / self.num_ensemble
-            else:
-                contrastive_loss += F.cross_entropy(
-                    torch.cat([pos_distances, neg_distances], dim=1).float(),
-                    torch.zeros(z.size(0),
-                                device=z.device).long()) / self.num_ensemble
-            # Compute the conventional prototype loss
-            if conventional_loss is None:
-                conventional_loss = F.cross_entropy(
-                    prototype_logits[ens], targets[ens]) / self.num_ensemble
-            else:
-                conventional_loss += F.cross_entropy(
-                    prototype_logits[ens], targets[ens]) / self.num_ensemble
+            contrastive_loss = (contrastive_loss or 0) + (F.cross_entropy(
+                torch.cat([pos_distances, neg_distances], dim=1).float(),
+                torch.zeros(z.size(0), device=z.device).long(),
+                reduction='none') * coeff).mean(0) / self.num_ensemble
+
+            conventional_loss = (conventional_loss or 0) + F.cross_entropy(
+                prototype_logits[ens], targets[ens]) / self.num_ensemble
 
         # Compute the consistency loss, also unpdate the classifier
         classifier_loss = F.kl_div(classifier_logits.log_softmax(-1),
@@ -364,10 +354,14 @@ class Ours(Algorithm):
         consistency_loss = F.kl_div(classifier_logits.log_softmax(-1),
                                     pre_logits.softmax(-1),
                                     reduction='batchmean')
-        
-        loss = 0.2 * self._lambda1 * contrastive_loss + conventional_loss + classifier_loss + self._lambda2 * consistency_loss
+
+        loss = 0.2 * self._lambda1 * contrastive_loss + conventional_loss + self._lambda2 * (
+            classifier_loss + consistency_loss)
+
         loss.backward()
+
         self.optimizer.step()
+
         # self.update_ema(self.classifier, self.pre_classifier)
 
         return outputs
