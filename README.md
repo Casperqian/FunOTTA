@@ -1,4 +1,4 @@
-# Test Time Adaptation for Fundus Image Classification by Stable Feature Learning
+# Test Time Adaptation for Fundus Image Classification
 This is the official implementation of `FunOTTA: On-the-Fly Adaptation on Cross-Domain Fundus Image via Stable Test-time Training`.
 ## Get Started
 ```bash
