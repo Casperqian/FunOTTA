@@ -1,6 +1,6 @@
 # Function to adapt the source model with different algorithms
 
-run_model() {
+adaptation() {
     local TASK=$1
     local CONFIG=$2
     local CUDA_DEVICE=$3
@@ -20,6 +20,6 @@ run_model() {
     echo "Finished running task: $TASK with configuration: $CONFIG"
 }
 
-run_model "MultipleEnvironmentDR" "resnet50-BN" 0  
+adaptation "MultipleEnvironmentDR" "resnet50-BN" 0  
 
 echo "All tasks, configurations, and algorithms have been run."
