@@ -15,7 +15,7 @@ import torch.autograd as autograd
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
-# from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans
 from torchvision import transforms
 
 from domainbed.algorithms import Algorithm
@@ -33,8 +33,6 @@ ALGORITHMS = [
     'SHOT',
     'SHOTIM',
     'TAST',
-    'MEMO',
-    'MEMO_BN',
     'UniDG',
     'DeYO',
     'DeYOClf',
@@ -284,15 +282,15 @@ class Ours(Algorithm):
         device = self.supports.device
 
         if filter_K >= 0:
-            cluster_labels, cluster_centers = kmeans(X=self.supports,
+            c_labels, centroids = dynamic_filter(X=self.supports,
                                                      num_clusters=num_classes,
                                                      distance='euclidean',
                                                      device=device)
-            dist = torch.cdist(self.supports, cluster_centers, p=2)
+            dist = torch.cdist(self.supports, centroids, p=2)
             indices = []
             indices1 = torch.LongTensor(list(range(len(dist)))).to(device)
             for i in range(num_classes):
-                subset = (cluster_labels == i).nonzero(as_tuple=True)[0]
+                subset = (c_labels == i).nonzero(as_tuple=True)[0]
                 if subset.size(0) > 0:
                     dist_subset = dist[subset, i]
                     _, sorted_indices = torch.sort(dist_subset)
@@ -327,7 +325,6 @@ class Ours(Algorithm):
         prototype_embedding = self.mlps(prototype).view(
             self.num_ensemble, self.num_classes, -1)  # [ens, C, dim//4]
 
-        # yhat = torch.argmax(classifier_logits, dim=-1)  # [B]
         yhat = torch.argmax(prototype_logits, dim=-1)  # [ens, B]
 
         embedding = F.normalize(embedding, dim=-1)
@@ -492,220 +489,6 @@ class Ours(Algorithm):
         torch.cuda.empty_cache()
 
 
-class TAST(Algorithm):
-
-    def __init__(self, input_shape, num_classes, num_domains, hparams,
-                 algorithm):
-        super().__init__(input_shape, num_classes, num_domains, hparams)
-        # trained feature extractor and last linear classifier
-        self.featurizer = algorithm.featurizer
-        self.classifier = algorithm.classifier
-
-        # store supports and corresponding labels
-        warmup_supports = self.classifier.weight.data
-        self.warmup_supports = warmup_supports
-        warmup_prob = self.classifier(self.warmup_supports)
-        self.warmup_labels = F.one_hot(warmup_prob.argmax(1),
-                                       num_classes=num_classes)
-        self.warmup_ent = softmax_entropy(warmup_prob)
-        self.ent = self.warmup_ent.data
-        self.supports = self.warmup_supports.data
-        self.labels = self.warmup_labels.data
-
-        # hparams
-        self.filter_K = hparams['filter_K']
-        self.steps = hparams['gamma']
-        self.num_ensemble = hparams['num_ensemble']
-        self.lr = hparams['lr']
-        self.tau = hparams['tau']
-        self.init_mode = hparams['init_mode']
-        self.num_classes = num_classes
-        self.k = hparams['k']
-
-        # multiple projection heads and its optimizer
-        self.mlps = BatchEnsemble(self.featurizer.n_outputs,
-                                  self.featurizer.n_outputs // 4,
-                                  self.num_ensemble, self.init_mode).cuda()
-        self.optimizer = torch.optim.Adam(self.mlps.parameters(),
-                                          lr=self.lr,
-                                          eps=1e-8)
-
-    def forward(self, x, adapt=False):
-        if not self.hparams['cached_loader']:
-            z = self.featurizer(x)
-        else:
-            z = x
-
-        if adapt:
-            p_supports = self.classifier(z)
-            yhat = torch.nn.functional.one_hot(
-                p_supports.argmax(1), num_classes=self.num_classes).float()
-            ent = softmax_entropy(p_supports)
-
-            # prediction
-            self.supports = self.supports.to(z.device)
-            self.labels = self.labels.to(z.device)
-            self.ent = self.ent.to(z.device)
-            self.supports = torch.cat([self.supports, z])
-            self.labels = torch.cat([self.labels, yhat])
-            self.ent = torch.cat([self.ent, ent])
-
-        supports, labels = self.select_supports()
-
-        for _ in range(self.steps):
-            p = self.forward_and_adapt(z, supports, labels)
-        return p
-
-    def compute_logits(self, z, supports, labels, mlp):
-        '''
-        :param z: unlabeled test examples
-        :param supports: support examples
-        :param labels: labels of support examples
-        :param mlp: multiple projection heads
-        :return: classification logits of z
-        '''
-        B, dim = z.size()
-        N, dim_ = supports.size()
-
-        mlp_z = mlp(z)  # (B*ensemble_size,dim//4)
-        mlp_supports = mlp(supports)  # (N*ensemble_size,dim_//4)
-        assert (dim == dim_)
-
-        logits = torch.zeros(self.num_ensemble, B,
-                             self.num_classes).to(z.device)
-        for ens in range(self.num_ensemble):
-
-            temp_centroids = (labels /
-                              (labels.sum(dim=0, keepdim=True) +
-                               1e-12)).T @ mlp_supports[ens * N:(ens + 1) * N]
-
-            # normalize
-            temp_z = torch.nn.functional.normalize(mlp_z[ens * B:(ens + 1) *
-                                                         B],
-                                                   dim=1)
-            temp_centroids = torch.nn.functional.normalize(temp_centroids,
-                                                           dim=1)
-            logits[ens] = self.tau * temp_z @ temp_centroids.T  # [B,C]
-
-        return logits
-
-    def select_supports(self):
-        '''
-        we filter support examples with high prediction entropy
-        :return: filtered support examples.
-        '''
-        ent_s = self.ent
-        y_hat = self.labels.argmax(dim=1).long()
-        filter_K = self.filter_K
-        device = ent_s.device
-        if filter_K == -1:
-            indices = torch.LongTensor(list(range(len(ent_s)))).to(device)
-        else:
-            indices = []
-            indices1 = torch.LongTensor(list(range(len(ent_s)))).to(device)
-            for i in range(self.num_classes):
-                _, indices2 = torch.sort(ent_s[y_hat == i])
-                indices.append(indices1[y_hat == i][indices2][:filter_K])
-            indices = torch.cat(indices)
-
-        self.supports = self.supports[indices]
-        self.labels = self.labels[indices]
-        self.ent = self.ent[indices]
-
-        return self.supports, self.labels
-
-    @torch.enable_grad()
-    def forward_and_adapt(self, z, supports, labels):
-        # targets : pseudo labels, outputs: for prediction
-
-        with torch.no_grad():
-            targets, outputs = self.target_generation(z, supports, labels)
-
-        self.optimizer.zero_grad()
-
-        loss = None
-        logits = self.compute_logits(z, supports, labels, self.mlps)
-
-        for ens in range(self.num_ensemble):
-            if loss is None:
-                loss = F.kl_div(logits[ens].log_softmax(-1),
-                                targets[ens],
-                                reduction='batchmean')
-            else:
-                loss += F.kl_div(logits[ens].log_softmax(-1),
-                                 targets[ens],
-                                 reduction='batchmean')
-
-        loss.backward()
-        self.optimizer.step()
-
-        return outputs  # outputs
-
-    def reset(self):
-        self.supports = self.warmup_supports.data
-        self.labels = self.warmup_labels.data
-        self.ent = self.warmup_ent.data
-
-        self.mlps.reset()
-        self.optimizer = torch.optim.Adam(self.mlps.parameters(), lr=self.lr)
-
-        torch.cuda.empty_cache()
-
-    # from https://jejjohnson.github.io/research_journal/snippets/numpy/euclidean/
-    def euclidean_distance_einsum(self, X, Y):
-        # X, Y [n, dim], [m, dim] use_featurer_cache > [n,m]
-        XX = torch.einsum('nd, nd->n', X, X)[:, None]  # [n, 1]
-        YY = torch.einsum('md, md->m', Y, Y)  # [m]
-        XY = 2 * torch.matmul(X, Y.T)  # [n,m]
-        return XX + YY - XY
-
-    def cosine_distance_einsum(self, X, Y):
-        # X, Y [n, dim], [m, dim] -> [n,m]
-        X = F.normalize(X, dim=1)
-        Y = F.normalize(Y, dim=1)
-        XX = torch.einsum('nd, nd->n', X, X)[:, None]  # [n, 1]
-        YY = torch.einsum('md, md->m', Y, Y)  # [m]
-        XY = 2 * torch.matmul(X, Y.T)  # [n,m]
-        return XX + YY - XY
-
-    def target_generation(self, z, supports, labels):
-
-        # retrieve k nearest neighbors. from "https://github.com/csyanbin/TPN/blob/master/train.py"
-        dist = self.cosine_distance_einsum(z, supports)
-        W = torch.exp(-dist)  # [B, N]
-
-        temp_k = self.filter_K if self.filter_K != -1 else supports.size(
-            0) // self.num_classes
-        k = min(self.k, temp_k)
-
-        values, indices = torch.topk(W, k, sorted=False)  # [B, k]
-        topk_indices = torch.zeros_like(W).scatter_(
-            1, indices, 1)  # [B, N] 1 for topk, 0 for else
-        temp_labels = self.compute_logits(supports, supports, labels,
-                                          self.mlps)  # [ens, N, C]
-        temp_labels_targets = F.one_hot(
-            temp_labels.argmax(-1),
-            num_classes=self.num_classes).float()  # [ens, N, C]
-        temp_labels_outputs = torch.softmax(temp_labels, -1)  # [ens, N, C]
-        topk_indices = topk_indices.unsqueeze(0).repeat(
-            self.num_ensemble, 1, 1)  # [ens, B, N]
-
-        # targets for pseudo labels. we use one-hot class distribution
-        targets = torch.bmm(topk_indices, temp_labels_targets)  # [ens, B, C]
-        targets = targets / (targets.sum(2, keepdim=True) + 1e-12
-                             )  # [ens, B, C]
-        # targets = targets.mean(0)  # [B,C]
-
-        # outputs for prediction
-
-        outputs = torch.bmm(topk_indices, temp_labels_outputs)  # [ens, B, C]
-        outputs = outputs / (outputs.sum(2, keepdim=True) + 1e-12
-                             )  # [ens, B, C]
-        outputs = outputs.mean(0)  # [B,C]
-
-        return targets, outputs
-
-
 class T3A(Algorithm):
     """
     Test Time Template Adjustments (T3A)
@@ -785,88 +568,7 @@ class T3A(Algorithm):
         self.supports = self.warmup_supports.data
         self.labels = self.warmup_labels.data
         self.ent = self.warmup_ent.data
-
-
-class MEMO(Algorithm):
-
-    def __init__(self, input_shape, num_classes, num_domains, hparams,
-                 algorithm):
-        super().__init__(input_shape, num_classes, num_domains, hparams)
-        self.aug_batchsize = hparams['aug_batchsize']
-        self.lr = hparams['lr']
-        self.model, self.optimizer = self.configure_model_optimizer(algorithm)
-        # note: if the model is never reset, like for continual adaptation,
-        # then skipping the state copy would save memory
-        self.model_state, self.optimizer_state = \
-            copy_model_and_optimizer(self.model, self.optimizer)
-
-    def forward(self, x, adapt=False):
-        if adapt:
-            if self.hparams['cached_loader']:
-                outputs = self.forward_and_adapt(x, self.model.classifier,
-                                                 self.optimizer)
-            else:
-                outputs = self.forward_and_adapt(x, self.model, self.optimizer)
-        else:
-            if self.hparams['cached_loader']:
-                outputs = self.model.classifier(x)
-            else:
-                outputs = self.model(x)
-        return outputs
-
-    @torch.enable_grad()
-    def forward_and_adapt(self, x, model, optimizer):
-        batch_size = x.shape[0]
-        logits_list = []
-        with ThreadPoolExecutor(max_workers=16) as executor:
-            for i in range(batch_size):
-                futures = [
-                    executor.submit(aug, x[i])
-                    for _ in range(self.aug_batchsize)
-                ]
-                inputs = [f.result() for f in futures]
-                inputs = torch.stack(inputs).cuda()
-                optimizer.zero_grad()
-                logits = model(inputs)
-                loss, logits = marginal_entropy(logits)
-                loss.backward()
-                optimizer.step()
-
-                logits = self.test_single(model, x[i])
-                logits_list.append(logits)
-        outputs = torch.cat(logits_list, dim=0)
-        return outputs
-
-    def test_single(self, model, x):
-        model.eval()
-        inputs = te_transforms(x).unsqueeze(0)
-        with torch.no_grad():
-            outputs = model(inputs)
-        return outputs
-
-    def configure_model_optimizer(self, algorithm):
-        algorithm = copy.deepcopy(algorithm)
-        optimizer = torch.optim.Adam([{
-            'params': algorithm.parameters(),
-            'lr': self.lr
-        }])
-        return algorithm, optimizer
-
-    def reset(self):
-        if self.model_state is None or self.optimizer_state is None:
-            raise Exception("cannot reset without saved model/optimizer state")
-        load_model_and_optimizer(self.model, self.optimizer, self.model_state,
-                                 self.optimizer_state)
-
-
-class MEMO_BN(MEMO):
-
-    def configure_model_optimizer(self, algorithm):
-        algorithm = copy.deepcopy(algorithm)
-        params, _ = collect_params(algorithm)
-        optimizer = torch.optim.Adam([{'params': params, 'lr': self.lr}])
-        return algorithm, optimizer
-
+        
 
 class TentFull(Algorithm):
 
