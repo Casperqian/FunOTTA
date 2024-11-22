@@ -1,5 +1,3 @@
-# The code is modified from domainbed.algorithms
-
 import copy
 import itertools
 import math
@@ -67,7 +65,6 @@ def marginal_entropy(outputs):
     return -(avg_logits * torch.exp(avg_logits)).sum(dim=-1), avg_logits
 
 
-# motivated from "https://github.com/cs-giung/giung2/blob/c8560fd1b5/giung2/layers/linear.py"
 class BatchEnsemble(nn.Module):
 
     def __init__(self, indim, outdim, ensemble_size, init_mode):
@@ -101,7 +98,6 @@ class BatchEnsemble(nn.Module):
         else:
             self.register_parameter("ensemble_bias", None)
 
-        # initialize parameters
         self.init_mode = init_mode
         self.reset()
 
