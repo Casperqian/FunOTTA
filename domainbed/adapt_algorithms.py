@@ -1275,15 +1275,13 @@ class DeYO(Algorithm):
     def __init__(self, input_shape, num_classes, num_domains, hparams,
                  algorithm):
         super().__init__(input_shape, num_classes, num_domains, hparams)
-        self.lr = hparams["lr"]  # [2.5e-4]
+        self.lr = hparams["lr"]  
         self.steps = hparams["gamma"]
-        self.deyo_margin = hparams["ent_thrshold"]  # [0.5]
-        self.ent_margin = hparams["ent_margin"]  # [0.4]
-        self.plpd_threshold = hparams["plpd_threshold"]  # [0.2, 0.3]
+        self.deyo_margin = hparams["ent_thrshold"] 
+        self.ent_margin = hparams["ent_margin"]  
+        self.plpd_threshold = hparams["plpd_threshold"]  
         self.aug_type = hparams["aug_type"]  # ["occ", "patch", "pixel"]
 
-        # self.counts = [1e-6, 1e-6, 1e-6, 1e-6]
-        # self.correct_counts = [0, 0, 0, 0]
         self.model, self.optimizer = self.configure_model_optimizer(algorithm)
         self.model_state, self.optimizer_state = \
             copy_model_and_optimizer(self.model, self.optimizer)
