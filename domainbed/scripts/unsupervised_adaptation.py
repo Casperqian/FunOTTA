@@ -368,7 +368,6 @@ if __name__ == "__main__":
             'num_ensemble': [5],
             'gamma': [1, 3],
             'lr': [1e-3],
-            'tau': [10],
             'k': [2, 4, 8],
             'lambda1': [1],  # For ablation study
             'lambda2': [1],  
