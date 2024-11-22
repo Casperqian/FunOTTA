@@ -1,26 +1,25 @@
-# The code is modified from domainbed.scripts.train
 
 import argparse
-from argparse import Namespace
 import collections
+import copy
+import itertools
 import json
+import math
 import os
 import random
 import sys
 import time
 import uuid
 from itertools import chain
-import itertools
-import copy
-from tqdm import tqdm
 
 import numpy as np
 import PIL
+from tqdm import tqdm
+from sklearn.metrics import accuracy_score, roc_auc_score, f1_score, confusion_matrix
 import torch
 import torchvision
 import torch.utils.data
 
-from sklearn.metrics import accuracy_score, roc_auc_score, f1_score, confusion_matrix
 
 from domainbed import datasets
 from domainbed import hparams_registry
@@ -372,7 +371,7 @@ if __name__ == "__main__":
             'tau': [10],
             'k': [2, 4, 8],
             'lambda1': [1],  # For ablation study
-            'lambda2': [1],  # For ablation study
+            'lambda2': [1],  
             'init_mode': ['kaiming_normal']
         }
     elif args.adapt_algorithm in ['UniDG']:
@@ -386,8 +385,8 @@ if __name__ == "__main__":
         adapt_hparams_dict = {
             'lr': [1e-3, 2.5e-4, 1e-4],
             'gamma': [1, 3],
-            'ent_thrshold': [0.5, 1.0, 1.5],
-            'ent_margin': [0.4],
+            'ent_thrshold': [0.5 * math.log(dataset.num_classes)],
+            'ent_margin': [0.4 * math.log(dataset.num_classes)],
             'plpd_threshold': [0.2, 0.3],
             'aug_type': ["occ", "patch", "pixel"]
         }
