@@ -3,7 +3,6 @@ import itertools
 import math
 import multiprocessing as mp
 import random
-from concurrent.futures import ThreadPoolExecutor
 from typing import List
 
 import numpy as np
@@ -16,7 +15,6 @@ from einops import rearrange
 from torchvision import transforms
 
 from domainbed.algorithms import Algorithm
-from domainbed.dynamic_cluster import kmeans
 from domainbed.lib.Aug import aug
 
 ALGORITHMS = [
