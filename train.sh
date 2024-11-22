@@ -1,3 +1,4 @@
+# Train the model on source domain
 
 train_model() {
     local TASK=$1
