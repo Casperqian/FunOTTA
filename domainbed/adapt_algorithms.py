@@ -221,9 +221,9 @@ class Ours(Algorithm):
         self.init_mode = hparams['init_mode']
         self.num_classes = num_classes
         self.k = hparams['k']
-        self.tau = hparams['tau']
         self._lambda1 = hparams['lambda1']
         self._lambda2 = hparams['lambda2']
+        self.tau = 10
 
         # modules and its optimizer
         self.mlps = BatchEnsemble(self.featurizer.n_outputs,
@@ -366,7 +366,6 @@ class Ours(Algorithm):
 
     def target_generation(self, z, supports, labels):
 
-        # retrieve k nearest neighbors. from "https://github.com/csyanbin/TPN/blob/master/train.py"
         dist = self.cosine_distance_einsum(z, supports)
         W = torch.exp(-dist)  # [B, N]
 
@@ -399,7 +398,6 @@ class Ours(Algorithm):
 
         return targets, outputs
 
-    # from https://jejjohnson.github.io/research_journal/snippets/numpy/euclidean/
     def euclidean_distance_einsum(self, X, Y):
         # X, Y [n, dim], [m, dim] use_featurer_cache > [n,m]
         XX = torch.einsum('nd, nd->n', X, X)[:, None]  # [n, 1]
