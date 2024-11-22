@@ -13,7 +13,6 @@ import torch.autograd as autograd
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
-from sklearn.cluster import KMeans
 from torchvision import transforms
 
 from domainbed.algorithms import Algorithm
