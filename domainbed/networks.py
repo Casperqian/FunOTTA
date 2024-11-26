@@ -4,7 +4,6 @@ import timm
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models
-from domainbed.model.SpGraph import VisionTransformer
 from domainbed.lib import misc
 from domainbed.lib import wide_resnet
 from domainbed.lib import big_transfer
