@@ -6,7 +6,7 @@ git clone https://github.com/Casperqian/FunOTTA.git
 cd FundusTTA
 ```
 ## Training & Test-time Adaptation
-Train a model and then perform self-supervised adaptation:   
+Train a model and then perform test-time adaptation:   
 ```bash
 bash train.sh 
 bash adaptation.sh
