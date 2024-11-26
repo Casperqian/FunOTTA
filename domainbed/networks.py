@@ -9,7 +9,7 @@ from domainbed.lib import misc
 from domainbed.lib import wide_resnet
 from domainbed.lib import big_transfer
 from domainbed.lib import vision_transformer
-from torchvision.models import (ResNet18_Weights, ResNet50_Weights, EfficientNet_B0_Weights, EfficientNet_B4_Weights)
+from torchvision.models import ResNet18_Weights, ResNet50_Weights, EfficientNet_B0_Weights, EfficientNet_B4_Weights
 
 
 def remove_batch_norm_from_resnet(model):
