@@ -58,128 +58,78 @@ def marginal_entropy(outputs):
     return -(avg_logits * torch.exp(avg_logits)).sum(dim=-1), avg_logits
 
 
-class BatchEnsemble(nn.Module):
+import torch
+import torch.nn as nn
+from typing import List
 
+
+class EnsembleLearner(nn.Module):
     def __init__(self, indim, outdim, ensemble_size, init_mode):
         super().__init__()
+
         self.ensemble_size = ensemble_size
         self.in_features = indim
         self.out_features = outdim
-
-        # register parameters
-        self.register_parameter(
-            "weight",
-            nn.Parameter(torch.Tensor(self.out_features, self.in_features)))
-        self.register_parameter("bias",
-                                nn.Parameter(torch.Tensor(self.out_features)))
-
-        self.register_parameter(
-            "alpha_be",
-            nn.Parameter(torch.Tensor(self.ensemble_size, self.in_features)))
-        self.register_parameter(
-            "gamma_be",
-            nn.Parameter(torch.Tensor(self.ensemble_size, self.out_features)))
-
-        use_ensemble_bias = True
-        if use_ensemble_bias and self.bias is not None:
-            delattr(self, "bias")
-            self.register_parameter("bias", None)
-            self.register_parameter(
-                "ensemble_bias",
-                nn.Parameter(
-                    torch.Tensor(self.ensemble_size, self.out_features)))
-        else:
-            self.register_parameter("ensemble_bias", None)
-
         self.init_mode = init_mode
+
+        # Register parameters
+        self.weight = nn.Parameter(torch.Tensor(self.out_features, self.in_features))
+        self.bias = nn.Parameter(torch.Tensor(self.out_features))
+        self.alpha_be = nn.Parameter(torch.Tensor(self.ensemble_size, self.in_features))
+        self.gamma_be = nn.Parameter(torch.Tensor(self.ensemble_size, self.out_features))
+        self.ensemble_bias = nn.Parameter(torch.Tensor(self.ensemble_size, self.out_features))
+
         self.reset()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        dim = None
-        if x.dim() == 2:
-            B, D1 = x.size()
-            k, dim = 1, 2
-            x = x.unsqueeze(1)
-        elif x.dim() == 3:
-            dim = 3
-            B, k, D1 = x.size()
-        else:
-            raise ValueError(
-                "Input must be either [batchsize, indim] or [batchsize, k, indim]"
-            )
+        B, k, D1 = x.size() if x.dim() == 3 else (x.size(0), 1, x.size(1))
+        x = x.unsqueeze(1) if x.dim() == 2 else x
 
-        r_x = x.view(1, B, k, D1).expand(self.ensemble_size, B, k,
-                                         D1)  # [ensemble_size, B, k, D1]
-        r_x = r_x.view(self.ensemble_size, B * k, D1)
+        r_x = x.view(1, B, k, D1).expand(self.ensemble_size, B, k, D1)
+        r_x = r_x.view(self.ensemble_size, B * k, D1) * self.alpha_be.view(self.ensemble_size, 1, D1)
+        w_r_x = nn.functional.linear(r_x.view(-1, D1), self.weight, self.bias)
+        s_w_r_x = w_r_x.view(self.ensemble_size, B * k, -1)
 
-        # Apply alpha
-        r_x = r_x * self.alpha_be.view(self.ensemble_size, 1, D1)
-        r_x = r_x.view(-1, D1)
-
-        # Linear transformation
-        w_r_x = nn.functional.linear(
-            r_x, self.weight, self.bias)  # [ensemble_size * B * k, outdim]
-
-        # Reshape the result back to [ensemble_size, B * k, outdim]
-        _, D2 = w_r_x.size()
-        s_w_r_x = w_r_x.view(self.ensemble_size, B * k, D2)
-
-        # Apply gamma and ensemble bias
-        s_w_r_x = s_w_r_x * self.gamma_be.view(self.ensemble_size, 1, D2)
+        s_w_r_x = s_w_r_x * self.gamma_be.view(self.ensemble_size, 1, -1)
         if self.ensemble_bias is not None:
-            s_w_r_x = s_w_r_x + self.ensemble_bias.view(
-                self.ensemble_size, 1, D2)
+            s_w_r_x += self.ensemble_bias.view(self.ensemble_size, 1, -1)
 
-        s_w_r_x = s_w_r_x.view(self.ensemble_size, B, k, D2)
-        s_w_r_x = s_w_r_x.view(-1, k, D2)
+        s_w_r_x = s_w_r_x.view(self.ensemble_size, B, k, -1).view(-1, k, -1)
 
-        if dim == 2:
-            return s_w_r_x.squeeze()
-        return s_w_r_x
+        return s_w_r_x.squeeze() if x.dim() == 2 else s_w_r_x
 
     def reset(self):
-        init_details = [0, 1]
-        initialize_tensor(self.weight, self.init_mode, init_details)
-        initialize_tensor(self.alpha_be, self.init_mode, init_details)
-        initialize_tensor(self.gamma_be, self.init_mode, init_details)
+        self._initialize_tensor(self.weight)
+        self._initialize_tensor(self.alpha_be)
+        self._initialize_tensor(self.gamma_be)
         if self.ensemble_bias is not None:
-            initialize_tensor(self.ensemble_bias, "zeros")
+            self._initialize_tensor(self.ensemble_bias)
         if self.bias is not None:
-            initialize_tensor(self.bias, "zeros")
+            self._initialize_tensor(self.bias)
+
+    def _initialize_tensor(self, tensor: torch.Tensor):
+        init_values = [0, 1]  # Default init values
+        if self.init_mode in ['zeros', 'ones', 'uniform', 'normal', 'random_sign']:
+            initialize_tensor(tensor, self.init_mode, init_values)
+        else:
+            initialize_tensor(tensor, self.init_mode)
 
 
-def initialize_tensor(
-    tensor: torch.Tensor,
-    initializer: str,
-    init_values: List[float] = [],
-) -> None:
+def initialize_tensor(tensor: torch.Tensor, initializer: str, init_values: List[float] = []) -> None:
     if initializer == "zeros":
         nn.init.zeros_(tensor)
-
     elif initializer == "ones":
         nn.init.ones_(tensor)
-
     elif initializer == "uniform":
         nn.init.uniform_(tensor, init_values[0], init_values[1])
-
     elif initializer == "normal":
         nn.init.normal_(tensor, init_values[0], init_values[1])
-
-    elif initializer == "random_sign":
-        with torch.no_grad():
-            tensor.data.copy_(
-                2.0 * init_values[1] *
-                torch.bernoulli(torch.zeros_like(tensor) + init_values[0]) -
-                init_values[1])
     elif initializer == 'xavier_normal':
-        torch.nn.init.xavier_normal_(tensor)
-
+        nn.init.xavier_normal_(tensor)
     elif initializer == 'kaiming_normal':
-        torch.nn.init.kaiming_normal_(tensor)
-
+        nn.init.kaiming_normal_(tensor)
     else:
         raise NotImplementedError(f"Unknown initializer: {initializer}")
-
 
 class Ours(Algorithm):
 
@@ -222,7 +172,7 @@ class Ours(Algorithm):
         self.tau = 10
 
         # modules and its optimizer
-        self.mlps = BatchEnsemble(self.featurizer.n_outputs,
+        self.mlps = EnsembleLearner(self.featurizer.n_outputs,
                                   self.featurizer.n_outputs // 4,
                                   self.num_ensemble, self.init_mode).cuda()
         self.optimizer = torch.optim.Adam([{
@@ -555,7 +505,7 @@ class TAST(Algorithm):
         self.k = hparams['k']
 
         # multiple projection heads and its optimizer
-        self.mlps = BatchEnsemble(self.featurizer.n_outputs,
+        self.mlps = EnsembleLearner(self.featurizer.n_outputs,
                                   self.featurizer.n_outputs // 4,
                                   self.num_ensemble, self.init_mode).cuda()
         self.optimizer = torch.optim.Adam(self.mlps.parameters(),
