@@ -81,23 +81,27 @@ class EnsembleLearner(nn.Module):
 
         self.reset()
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        B, k, D1 = x.size() if x.dim() == 3 else (x.size(0), 1, x.size(1))
-        x = x.unsqueeze(1) if x.dim() == 2 else x
-
-        r_x = x.view(1, B, k, D1).expand(self.ensemble_size, B, k, D1)
-        r_x = r_x.view(self.ensemble_size, B * k, D1) * self.alpha_be.view(self.ensemble_size, 1, D1)
-        w_r_x = nn.functional.linear(r_x.view(-1, D1), self.weight, self.bias)
-        s_w_r_x = w_r_x.view(self.ensemble_size, B * k, -1)
-
-        s_w_r_x = s_w_r_x * self.gamma_be.view(self.ensemble_size, 1, -1)
+    def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
+        batch_size, num_heads, input_dim = input_tensor.size() if input_tensor.dim() == 3 else (input_tensor.size(0), 1, input_tensor.size(1))
+        input_tensor = input_tensor.unsqueeze(1) if input_tensor.dim() == 2 else input_tensor
+        
+        # Expand input tensor to the size of ensemble
+        expanded_input = input_tensor.view(1, batch_size, num_heads, input_dim).expand(self.ensemble_size, batch_size, num_heads, input_dim)
+        expanded_input = expanded_input.view(self.ensemble_size, batch_size * num_heads, input_dim)
+        scaled_input = expanded_input * self.alpha.view(self.ensemble_size, 1, input_dim)
+        scaled_input = scaled_input.view(-1, input_dim)
+        linear_output = nn.functional.linear(scaled_input, self.weight, self.bias)
+        output_dim = linear_output.size(1)
+        
+        reshaped_output = linear_output.view(self.ensemble_size, batch_size * num_heads, output_dim)
+        reshaped_output = reshaped_output * self.gamma.view(self.ensemble_size, 1, output_dim)
         if self.ensemble_bias is not None:
-            s_w_r_x += self.ensemble_bias.view(self.ensemble_size, 1, -1)
-
-        s_w_r_x = s_w_r_x.view(self.ensemble_size, B, k, -1).view(-1, k, -1)
-
-        return s_w_r_x.squeeze() if x.dim() == 2 else s_w_r_x
-
+            reshaped_output += self.ensemble_bias.view(self.ensemble_size, 1, output_dim)
+        reshaped_output = reshaped_output.view(self.ensemble_size, batch_size, num_heads, output_dim)
+        reshaped_output = reshaped_output.view(-1, num_heads, output_dim)
+        
+        return reshaped_output.squeeze() if input_tensor.dim() == 2 else reshaped_output
+        
     def reset(self):
         self._initialize_tensor(self.weight)
         self._initialize_tensor(self.alpha_be)
