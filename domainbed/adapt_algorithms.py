@@ -58,11 +58,6 @@ def marginal_entropy(outputs):
     return -(avg_logits * torch.exp(avg_logits)).sum(dim=-1), avg_logits
 
 
-import torch
-import torch.nn as nn
-from typing import List
-
-
 class EnsembleLearner(nn.Module):
     def __init__(self, indim, outdim, ensemble_size, init_mode):
         super().__init__()
@@ -134,6 +129,7 @@ def initialize_tensor(tensor: torch.Tensor, initializer: str, init_values: List[
         nn.init.kaiming_normal_(tensor)
     else:
         raise NotImplementedError(f"Unknown initializer: {initializer}")
+
 
 class Ours(Algorithm):
 
