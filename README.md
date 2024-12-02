@@ -1,5 +1,5 @@
 # Test Time Adaptation for Fundus Image Classification
-This is the official implementation of `FunOTTA: On-the-Fly Adaptation on Cross-Domain Fundus Image via Stable Test-time Training`.
+This is the official implementation of `FunOTTA: On-the-Fly Adaptation on Cross-Domain Fundus Image via Stable Test-time Training`.   
 ![Framework Diagram]([https://github.com/Casperqian/FunOTTA/raw/main/docs/framework.pdf](https://github.com/Casperqian/FunOTTA/blob/main/framework.pdf))
 ## Get Started
 ```bash
