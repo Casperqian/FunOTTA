@@ -4,6 +4,7 @@ This is the official implementation of `FunOTTA: On-the-Fly Adaptation on Cross-
 <p align="center">
   <img src="https://github.com/Casperqian/FunOTTA/blob/main/img/framework.jpg" alt="Framework Diagram" width="80%" />
 </p>   
+
 ## Get Started
 ```bash
 git clone https://github.com/Casperqian/FunOTTA.git
