@@ -8,7 +8,7 @@ This is the official implementation of `FunOTTA: On-the-Fly Adaptation on Cross-
 ## Get Started
 ```bash
 git clone https://github.com/Casperqian/FunOTTA.git
-cd FundusTTA
+cd FunOTTA
 ```
 ## Training & Test-time Adaptation
 Train a model and then perform test-time adaptation:   
