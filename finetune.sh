@@ -25,20 +25,17 @@ run_model() {
     local INPUT_DIR="${INPUT_DIRS[$CONFIG_NAME]}"
     
     echo "Running Finetuning for config: $CONFIG_NAME on GPU $GPU_ID"
-    
-    for epoch in 5 10
+
+    for freeze in "" "--freeze_extractor"
     do
-        for freeze in "" "--freeze_extractor"
-        do
-            echo ">>> Running $CONFIG_NAME"
-            
-            CUDA_VISIBLE_DEVICES=$GPU_ID python -m domainbed.scripts.finetune \
-                --input_dir=$INPUT_DIR \
-                --data_dir=$DATA_DIR \
-                --ft_batch_size 32 \
-                --epoch $epoch \
-                $freeze
-        done
+        echo ">>> Running $CONFIG_NAME"
+        
+        CUDA_VISIBLE_DEVICES=$GPU_ID python -m domainbed.scripts.finetune \
+            --input_dir=$INPUT_DIR \
+            --data_dir=$DATA_DIR \
+            --ft_batch_size 32 \
+            --epoch 10 \
+            $freeze
     done
 }
 
