@@ -285,26 +285,23 @@ class Ours(Algorithm):
         self.filter_K = hparams['filter_K']
         self.num_ensemble = hparams['num_ensemble']
         self.steps = hparams['gamma']
-        self.lr = hparams['lr']
         self.init_mode = hparams['init_mode']
         self.num_classes = num_classes
         self.k = hparams['k']
-        self.tau = hparams['tau']
         self._lambda1 = hparams['lambda1']
         self._lambda2 = hparams['lambda2']
+        self.tau = 10
 
         # modules and its optimizer
         self.mlps = BatchEnsemble(self.featurizer.n_outputs,
                                   self.featurizer.n_outputs // 4,
                                   self.num_ensemble, self.init_mode).cuda()
         self.optimizer = torch.optim.Adam([{
-            'params':
-            self.classifier.parameters(),
-            'lr':
-            0.1 * self.lr
+            'params': self.classifier.parameters(),
+            'lr': 1e-4
         }, {
             'params': self.mlps.parameters(),
-            'lr': self.lr
+            'lr': 1e-3
         }])
 
     def forward(self, x, adapt=False):
@@ -562,13 +559,11 @@ class Ours(Algorithm):
         self.pre_classifier.load_state_dict(self.clf_state_dict)
         self.mlps.reset()
         self.optimizer = torch.optim.Adam([{
-            'params':
-            self.classifier.parameters(),
-            'lr':
-            0.1 * self.lr
+            'params': self.classifier.parameters(),
+            'lr': 1e-4
         }, {
             'params': self.mlps.parameters(),
-            'lr': self.lr
+            'lr': 1e-3
         }])
         torch.cuda.empty_cache()
 
