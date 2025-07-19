@@ -1,25 +1,28 @@
+# The code is modified from domainbed.scripts.train
 
 import argparse
+from argparse import Namespace
 import collections
-import copy
-import itertools
 import json
-import math
 import os
 import random
 import sys
 import time
 import uuid
 from itertools import chain
+import itertools
+import copy
+from tqdm import tqdm
 
+import math
 import numpy as np
 import PIL
-from tqdm import tqdm
-from sklearn.metrics import accuracy_score, roc_auc_score, f1_score, confusion_matrix
 import torch
 import torchvision
 import torch.utils.data
 
+from sklearn.metrics import accuracy_score, roc_auc_score, f1_score, confusion_matrix
+from scipy.optimize import linear_sum_assignment
 
 from domainbed import datasets
 from domainbed import hparams_registry
@@ -33,6 +36,7 @@ import itertools
 
 
 class Dataset:
+
     def __init__(self, x, y):
         self.x = x
         self.y = y
@@ -50,6 +54,7 @@ def generate_featurelized_loader(loader, network, classifier, batch_size=32):
     We speeded up the experiments by converting the observations into representations. 
     """
     z_list = []
+    z_pair_list = []
     y_list = []
     p_list = []
     network.eval()
@@ -66,6 +71,7 @@ def generate_featurelized_loader(loader, network, classifier, batch_size=32):
     network.train()
     classifier.train()
     z = torch.cat(z_list)
+    z_pair = torch.cat(z_pair_list) if len(z_pair_list) > 0 else None
     y = torch.cat(y_list)
     p = torch.cat(p_list)
     ent = softmax_entropy(p)
@@ -87,28 +93,31 @@ def softmax_entropy(x: torch.Tensor) -> torch.Tensor:
     return -(x.softmax(1) * x.log_softmax(1)).sum(1)
 
 
-def accuracy_auc_f1(network, loader, device, adapt=False):
+def accuracy_auc_f1(network, loader, device, adapt=False, epoch=1):
     all_labels = []
     all_predictions = []
     all_probabilities = []
 
     network.eval()
-    with torch.no_grad():
-        for x, y in tqdm(loader):
-            x = x.to(device)
-            y = y.to(device)
+    for e in range(epoch):
+        is_last_epoch = (e + 1 == epoch)
+        with torch.no_grad():
+            for x, y in loader:
+                x = x.to(device)
+                y = y.to(device)
 
-            if adapt is None:
-                p = network(x)
-            else:
-                p = network(x, adapt)
+                if adapt is None:
+                    p = network(x)
+                else:
+                    p = network(x, adapt)
 
-            pred = p.argmax(dim=1)
-            probas = torch.softmax(p, dim=1)
+                pred = p.argmax(dim=1)
+                probas = torch.softmax(p, dim=1)
 
-            all_labels.extend(y.cpu().detach().numpy())
-            all_predictions.extend(pred.cpu().detach().numpy())
-            all_probabilities.extend(probas.cpu().detach().numpy())
+                if is_last_epoch:
+                    all_labels.extend(y.cpu().detach().numpy())
+                    all_predictions.extend(pred.cpu().detach().numpy())
+                    all_probabilities.extend(probas.cpu().detach().numpy())
 
     all_probabilities = np.array(all_probabilities)
     all_labels = np.array(all_labels)
@@ -134,6 +143,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Domain generalization')
     parser.add_argument('--input_dir', type=str)
     parser.add_argument('--adapt_algorithm', type=str, default="T3A")
+    parser.add_argument('--data_dir', type=str, default=None)
+    parser.add_argument('--epoch', type=int, default=1)
+    parser.add_argument('--evaluate',
+                        action='store_true',
+                        help='Evaluate base model')
     args_in = parser.parse_args()
 
     epochs_path = os.path.join(args_in.input_dir, 'results.jsonl')
@@ -163,6 +177,8 @@ if __name__ == "__main__":
             'TentPreBN',
             'TentClf',
             'PLClf',
+            'EATAClf',
+            'SARClf',
             'TAST',
             'Ours',
     ]:
@@ -223,6 +239,10 @@ if __name__ == "__main__":
         device = "cuda"
     else:
         device = "cpu"
+
+    if args_in.data_dir is not None:
+        args.data_dir = args_in.data_dir
+        print(f"Changing data directory to {args_in.data_dir}.")
 
     if args.dataset in vars(datasets):
         denormalize = True if args.adapt_algorithm == 'MEMO' else False
@@ -291,17 +311,21 @@ if __name__ == "__main__":
         algorithm.load_state_dict(algorithm_dict)
 
     # Evaluate base model
-    print("Base model's results")
-    results = {}
-    evals = zip(eval_loader_names, eval_loaders, eval_weights)
-    for name, loader, weights in evals:
-        acc, auc, f1 = accuracy_auc_f1(algorithm, loader, device, adapt=None)
-        # results[name + '_acc'] = round(acc, 4)
-        results[name + '_auc'] = round(auc, 4)
-        results[name + '_f1'] = round(f1, 4)
-    results_keys = sorted(results.keys())
-    misc.print_row(results_keys, colwidth=12)
-    misc.print_row([results[key] for key in results_keys], colwidth=12)
+    if args_in.evaluate:
+        print("Base model's results")
+        results = {}
+        evals = zip(eval_loader_names, eval_loaders, eval_weights)
+        for name, loader, weights in evals:
+            acc, auc, f1 = accuracy_auc_f1(algorithm,
+                                           loader,
+                                           device,
+                                           adapt=None)
+            results[name + '_acc'] = round(acc, 4)
+            results[name + '_auc'] = round(auc, 4)
+            results[name + '_f1'] = round(f1, 4)
+        results_keys = sorted(results.keys())
+        misc.print_row(results_keys, colwidth=12)
+        misc.print_row([results[key] for key in results_keys], colwidth=12)
 
     print("\nAfter {}".format(alg_name))
     # Cache the inference results
@@ -354,41 +378,68 @@ if __name__ == "__main__":
         }
     elif args.adapt_algorithm in ['TAST']:
         adapt_hparams_dict = {
-            'filter_K': [20, 50, 100, -1],
             'num_ensemble': [5],
+            'filter_K': [20, 50, 100, -1],
             'gamma': [1, 3],
             'lr': [1e-3],
             'tau': [10],
             'k': [2, 4, 8],
             'init_mode': ['kaiming_normal']
         }
-    elif args.adapt_algorithm in ['Ours']:
-        adapt_hparams_dict = {
-            'filter_K': [20, 50, 100, -1],
-            'num_ensemble': [5],
-            'gamma': [1, 3],
-            'lr': [1e-3],
-            'k': [2, 4, 8],
-            'lambda1': [1],  # For ablation study
-            'lambda2': [1],  
-            'init_mode': ['kaiming_normal']
-        }
     elif args.adapt_algorithm in ['UniDG']:
         adapt_hparams_dict = {
-            'filter_K': [20, 50, 100, -1],
             'lr': [1e-3, 1e-4],
             'gamma': [1, 3],
             'lamb': [1.0, 0.1],
+            'filter_K': [20, 50, 100, -1],
         }
     elif args.adapt_algorithm in ['DeYO', 'DeYOClf']:
         adapt_hparams_dict = {
-            'lr': [1e-3, 2.5e-4, 1e-4],
+            'lr': [2.5e-4, 1e-4],
             'gamma': [1, 3],
             'ent_thrshold': [0.5 * math.log(dataset.num_classes)],
             'ent_margin': [0.4 * math.log(dataset.num_classes)],
             'plpd_threshold': [0.2, 0.3],
             'aug_type': ["occ", "patch", "pixel"]
         }
+    elif args.adapt_algorithm in ['SAR', 'SARClf']:
+        adapt_hparams_dict = {
+            'alpha': [0.1, 1.0, 10.0],
+            'gamma': [1, 3],
+            'ent_margin': [0.4 * math.log(dataset.num_classes)],
+            'reset_constant_em': [0.1, 0.2]
+        }
+    elif args.adapt_algorithm in ['EATA', 'EATAClf']:
+        adapt_hparams_dict = {
+            'alpha': [0.1, 1.0, 10.0],
+            'gamma': [1, 3],
+            'fisher_alpha': [1],
+            'ent_margin': [0.4 * math.log(dataset.num_classes)],
+            'd_margin': [0.02, 0.05, 0.1, 0.2, 0.4]
+        }
+    elif args.adapt_algorithm in ['Ours']:
+        adapt_hparams_dict = {
+            'num_ensemble': [2, 5, 10],
+            'filter_K': [50, 100, 200, -1],
+            'gamma': [1, 3],
+            'lr': [1e-3],
+            'tau': [10],
+            'k': [2, 4, 8, 16],
+            'lambda1': [0, 1],  # For ablation study
+            'lambda2': [0, 1],  # For ablation study
+            'init_mode': ['kaiming_normal']
+        }
+        # adapt_hparams_dict = {
+        #     'num_ensemble': [1, 2, 5, 10, 20],
+        #     'filter_K': [50],
+        #     'gamma': [1],
+        #     'lr': [1e-3],
+        #     'tau': [10],
+        #     'k': [8],
+        #     'lambda1': [1],  # For ablation study
+        #     'lambda2': [1],  # For ablation study
+        #     'init_mode': ['kaiming_normal']
+        # }
     else:
         raise Exception("Not Implemented Error")
 
@@ -416,7 +467,8 @@ if __name__ == "__main__":
             acc, auc, f1 = accuracy_auc_f1(adapted_algorithm,
                                            loader,
                                            device,
-                                           adapt=True)
+                                           adapt=True,
+                                           epoch=args_in.epoch)
             results[name + '_acc'] = round(acc, 4)
             results[name + '_auc'] = round(auc, 4)
             results[name + '_f1'] = round(f1, 4)
