@@ -419,27 +419,14 @@ if __name__ == "__main__":
         }
     elif args.adapt_algorithm in ['Ours']:
         adapt_hparams_dict = {
-            'num_ensemble': [2, 5, 10],
+            'num_ensemble': [5],
             'filter_K': [50, 100, 200, -1],
             'gamma': [1, 3],
-            'lr': [1e-3],
-            'tau': [10],
-            'k': [2, 4, 8, 16],
-            'lambda1': [0, 1],  # For ablation study
-            'lambda2': [0, 1],  # For ablation study
+            'k': [2, 4, 8],
+            'lambda1': [0, 1], 
+            'lambda2': [0, 1], 
             'init_mode': ['kaiming_normal']
         }
-        # adapt_hparams_dict = {
-        #     'num_ensemble': [1, 2, 5, 10, 20],
-        #     'filter_K': [50],
-        #     'gamma': [1],
-        #     'lr': [1e-3],
-        #     'tau': [10],
-        #     'k': [8],
-        #     'lambda1': [1],  # For ablation study
-        #     'lambda2': [1],  # For ablation study
-        #     'init_mode': ['kaiming_normal']
-        # }
     else:
         raise Exception("Not Implemented Error")
 
