@@ -21,7 +21,7 @@ from torchvision import transforms
 from domainbed.algorithms import Algorithm
 from domainbed.kmeans_pytorch import kmeans
 from domainbed.lib.augmenter import aug
-from domainbed.utils.sam import SAM
+from domainbed.lib.sam import SAM
 
 ALGORITHMS = [
     'T3A',
