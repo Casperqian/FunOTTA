@@ -75,7 +75,6 @@ if __name__ == "__main__":
 
     args.output_dir = os.path.join(
         args.output_dir,
-        #    'test_envs-{}'.format(args.test_envs[0]),
         'trial_seed-{}'.format(args.trial_seed))
     os.makedirs(args.output_dir, exist_ok=True)
     sys.stdout = misc.Tee(os.path.join(args.output_dir, 'out.txt'))
@@ -124,6 +123,18 @@ if __name__ == "__main__":
     else:
         raise NotImplementedError
 
+    # Split each env into an 'in-split' and an 'out-split'. We'll train on
+    # each in-split except the test envs, and evaluate on all splits.
+
+    # To allow unsupervised domain adaptation experiments, we split each test
+    # env into 'in-split', 'uda-split' and 'out-split'. The 'in-split' is used
+    # by collect_results.py to compute classification accuracies.  The
+    # 'out-split' is used by the Oracle model selection method. The unlabeled
+    # samples in 'uda-split' are passed to the algorithm at training time if
+    # args.task == "domain_adaptation". If we are interested in comparing
+    # domain generalization and domain adaptation results, then domain
+    # generalization algorithms should create the same 'uda-splits', which will
+    # be discared at training.
     in_splits = []
     out_splits = []
     for env_i, env in enumerate(dataset):
@@ -203,7 +214,10 @@ if __name__ == "__main__":
         step_start_time = time.time()
         minibatches_device = [(x.to(device), y.to(device))
                               for x, y in next(train_minibatches_iterator)]
-        uda_device = None
+        if args.task == "domain_adaptation":
+            raise NotImplementedError("We do not implement domain adaptation.")
+        else:
+            uda_device = None
         step_vals = algorithm.update(minibatches_device, uda_device)
         checkpoint_vals['step_time'].append(time.time() - step_start_time)
 
