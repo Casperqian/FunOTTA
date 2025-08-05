@@ -44,8 +44,3 @@ The results on the Fetal-8 dataset are shown below:
   year={2020},
   publisher={Nature Publishing Group UK London}
 }
-
-
-
-
-
