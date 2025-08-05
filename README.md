@@ -38,7 +38,7 @@ Test-time adaptation methods are modular and can be customized in `./domainbed/a
 To validate the cross-modality generalizability of FunOTTA, we applied it to ultrasound images using the Fetal-8 dataset. This dataset features a different imaging modality with domain shift between vendors.
 
 * 📁 Folder: [`./fetal-8/`](./fetal-8/)
-* 📄 Dataset: Fetal-8 maternal-fetal ultrasound (ALOKA vs. Voluson)
+* 📄 Dataset: Fetal-8 maternal-fetal ultrasound images (ALOKA vs. Voluson)
 * ✅ Task: Cross-vendor classification across 8 anatomical classes
 
 See [`./fetal-8/README.md`](./fetal-8/README.md) for details.
