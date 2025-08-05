@@ -41,4 +41,4 @@ To validate the cross-modality generalizability of FunOTTA, we applied it to ult
 * 📄 Dataset: Fetal-8 maternal-fetal ultrasound (ALOKA vs. Voluson)
 * ✅ Task: Cross-vendor classification across 8 anatomical classes
 
-See `./fetal-8/README.md` for details.
+See [`./fetal-8/README.md`](./fetal-8/README.md) for details.
