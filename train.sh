@@ -19,7 +19,7 @@ train_model() {
     mkdir -p "$(dirname "$LOG_FILE")"
 
     nohup python -m domainbed.scripts.train \
-        --data_dir=/data2/zengqian/GTTA/datasets/ \
+        --data_dir=/change/to/your/path/ \
         --output_dir=$OUTPUT_DIR \
         --algorithm=$ALGORITHM \
         --dataset=$DATASET \
