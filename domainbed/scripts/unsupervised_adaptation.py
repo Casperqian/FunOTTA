@@ -252,18 +252,6 @@ if __name__ == "__main__":
     else:
         raise NotImplementedError
 
-    # Split each env into an 'in-split' and an 'out-split'. We'll train on
-    # each in-split except the test envs, and evaluate on all splits.
-
-    # To allow unsupervised domain adaptation experiments, we split each test
-    # env into 'in-split', 'uda-split' and 'out-split'. The 'in-split' is used
-    # by collect_results.py to compute classification accuracies.  The
-    # 'out-split' is used by the Oracle model selectino method. The unlabeled
-    # samples in 'uda-split' are passed to the algorithm at training time if
-    # args.task == "domain_adaptation". If we are interested in comparing
-    # domain generalization and domain adaptation results, then domain
-    # generalization algorithms should create the same 'uda-splits', which will
-    # be discared at training.
     test_splits = []
     for env_i, env in enumerate(dataset):
         if env_i in args.train_envs:
