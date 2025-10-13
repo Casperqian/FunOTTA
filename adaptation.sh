@@ -51,7 +51,6 @@ MAX_PARALLEL="${MAX_PARALLEL:-$GPU_COUNT}"
 
 timestamp() { date +"%Y%m%d-%H%M%S"; }
 
-# 动态找内存占用低于阈值的GPU，返回当前占用最少的GPU
 get_free_gpu() {
   local threshold_mb=${1:-1000}
   if ! command -v nvidia-smi >/dev/null 2>&1; then
