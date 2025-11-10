@@ -174,12 +174,10 @@ if __name__ == "__main__":
 
     if args.adapt_algorithm in [
             'T3A',
-            'TentPreBN',
             'TentClf',
             'PLClf',
             'EATAClf',
             'SARClf',
-            'TAST',
             'Ours',
     ]:
         use_featurer_cache = True
@@ -359,28 +357,6 @@ if __name__ == "__main__":
             'beta': [0.9],
             'theta': [0.1],
         }
-    elif args.adapt_algorithm in ['MEMO', 'MEMO_BN']:
-        adapt_hparams_dict = {
-            'aug_batchsize': [2, 4, 8],
-            'lr': [1e-4],
-        }
-    elif args.adapt_algorithm in ['TAST']:
-        adapt_hparams_dict = {
-            'num_ensemble': [5],
-            'filter_K': [20, 50, 100, -1],
-            'gamma': [1, 3],
-            'lr': [1e-3],
-            'tau': [10],
-            'k': [2, 4, 8],
-            'init_mode': ['kaiming_normal']
-        }
-    elif args.adapt_algorithm in ['UniDG']:
-        adapt_hparams_dict = {
-            'lr': [1e-3, 1e-4],
-            'gamma': [1, 3],
-            'lamb': [1.0, 0.1],
-            'filter_K': [20, 50, 100, -1],
-        }
     elif args.adapt_algorithm in ['DeYO', 'DeYOClf']:
         adapt_hparams_dict = {
             'lr': [2.5e-4, 1e-4],
@@ -407,10 +383,10 @@ if __name__ == "__main__":
         }
     elif args.adapt_algorithm in ['Ours']:
         adapt_hparams_dict = {
-            'num_ensemble': [5],
-            'filter_K': [50, 100, 200, -1],
+            'num_ensemble': [2, 5, 10],
+            'filter_K': [50, 100, -1],
             'gamma': [1, 3],
-            'k': [2, 4, 8],
+            'R': [4, 8, 16],
             'lambda1': [0, 1], 
             'lambda2': [0, 1], 
             'init_mode': ['kaiming_normal']
