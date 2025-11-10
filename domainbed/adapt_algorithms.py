@@ -283,7 +283,7 @@ class Ours(Algorithm):
         self.steps = hparams['gamma']
         self.init_mode = hparams['init_mode']
         self.num_classes = num_classes
-        self.k = hparams['k']
+        self.R = hparams['R']
         self._lambda1 = hparams['lambda1']
         self._lambda2 = hparams['lambda2']
         self.tau = 10
@@ -458,14 +458,14 @@ class Ours(Algorithm):
 
     def target_generation(self, z, supports, labels):
 
-        # retrieve k nearest neighbors. from "https://github.com/csyanbin/TPN/blob/master/train.py"
+        # from "https://github.com/csyanbin/TPN/blob/master/train.py"
         dist = self.cosine_distance_einsum(z, supports)
         W = torch.exp(-dist)  # [B, N]
 
-        temp_k = int(min(labels.sum(0)))
-        k = min(self.k, temp_k)
+        temp_R = int(min(labels.sum(0)))
+        R = min(self.R, temp_R)
 
-        values, indices = torch.topk(W, k, sorted=False)  # [B, k]
+        values, indices = torch.topk(W, R, sorted=False)  # [B, R]
         topk_indices = torch.zeros_like(W).scatter_(
             1, indices, 1)  # [B, N] 1 for topk, 0 for else
         temp_labels = self.compute_logits(supports, supports, labels,
