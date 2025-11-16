@@ -54,5 +54,4 @@ for TASK in "${TASK_LIST[@]}"; do
     done
 done
 
-echo "🎯 All jobs have been started in background."
-echo "👉 You can check logs in ./logs/ directory, e.g.: tail -f logs/MultipleEnvironmentDR_resnet50-BN_seed1.log"
+echo "All jobs have been started in background."
