@@ -2,7 +2,7 @@
 
 This is the official implementation of:
 
-> **FunOTTA: On-the-Fly Adaptation on Cross-Domain Fundus Image via Stable Test-time Training**  *(Under Review)*
+> **FunOTTA: On-the-Fly Adaptation on Cross-Domain Fundus Image via Stable Test-time Training**  
 
 <p align="center">
   <img src="https://github.com/Casperqian/FunOTTA/blob/main/img/Overview_v2.png" alt="Framework Diagram" width="90%" />
